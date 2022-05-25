@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- <link rel="shortcut icon" href="./img/favicon.png" type="image/x-icon" /> -->
+    <!-- <link rel="stylesheet" href="./css/style.css" /> -->
+    <script src="./js/jquery-2.1.3.min.js"></script>
+    <!-- header("Access-Control-Allow-Origin: *"); -->
+    <title>WalkWalkedWalked</title>
+    <style>
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        padding: 0;
+        margin: 0;
+        color: white;
+      }
+      h1 {
+        padding: 0;
+        margin: 0;
+        font-size: 50%;
+      }
+      .block {
+        /* display: flex;
+        justify-content: center;
+        align-items: center; */
+      }
+      .block-button {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin-top: 0.5%;
+      }
+      .block-button > div {
+        padding-left: 0.5%;
+        padding-right: 0.5%;
+      }
+      #block_myMap {
+        width: 100%;
+        height: 80%;
+        /* float: left; */
+      }
+      input {
+        width: 80px;
+      }
+      .neumorphism {
+        background-color: rgb(190, 205, 214);
+        padding: 10px;
+      }
+      .neumorphism .box {
+        border-radius: 10px;
+        background-color: rgb(190, 205, 214);
+        transition: box-shadow 0.5s;
+        box-shadow: 10px 10px 30px rgba(18, 47, 61, 0.5),
+          -10px -10px 30px rgba(248, 253, 255, 0.9),
+          inset 10px 10px 30px transparent, inset -10px -10px 30px transparent;
+        color: black;
+        border: 0px;
+        text-align: center;
+        padding: 5px;
+      }
+      .neumorphism .box:hover {
+        box-shadow: 10px 10px 30px transparent, -10px -10px 30px transparent,
+          inset 10px 10px 30px rgba(18, 47, 61, 0.5),
+          inset -10px -10px 30px rgba(248, 253, 255, 0.9);
+        /* color: aliceblue; */
+      }
+      #test {
+        display: flex;
+        justify-content: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="block" id="block_myMap">
+      <div id="myMap"></div>
+    </div>
+    <div class="block neumorphism">
+      <div class="block-button" id="stations">
+        <div>
+          <input type="button" class="box" id="recommend" value="お散歩検索" />
+        </div>
+        <div>
+          <select name="hours" id="hours" class="box">
+            <option value="0.5">30分</option>
+            <option value="1" selected>1時間</option>
+            <option value="1.5">1.5時間</option>
+          </select>
+        </div>
+      </div>
+      <div class="block-button" id="block_direction">
+        <div><input type="text" id="from" class="box" value="御茶ノ水" /></div>
+        <div><p>→</p></div>
+        <div><input id="to" class="box" value="表参道" /></div>
+        <div>
+          <select id="mode" class="box">
+            <option value="walking">walking</option>
+            <option value="driving">driving</option>
+          </select>
+        </div>
+        <div>
+          <input type="button" class="box" id="search" value="ルート検索" />
+        </div>
+      </div>
+      <div class="block-button" id="block_track">
+        <div>
+          <button id="start_tracking" class="box">Start Tracking</button>
+        </div>
+        <div>
+          <button id="stop_tracking" class="box">Stop Tracking</button>
+        </div>
+        <div>
+          <button id="clear_map" class="box">Map Clear</button>
+        </div>
+        <!-- <div id="speed">0</div> -->
+      </div>
+    </div>
+    <div id="test" class="neumorphism">
+      <div>
+        <button id="test_api" class="box">&#127866;</button>
+      </div>
+      <div>
+        <div id="test_field"></div>
+      </div>
+    </div>
+    <div class="block neumorphism">
+      <div id="direction" class="block-button"></div>
+    </div>
+    <!-- Directions[END] -->
+    <script
+      src="https://www.bing.com/api/maps/mapcontrol?callback=GetMap&key=Av1ElknqktL2GKmib4AisEhQ7-pYMmBBEBNm6EqifVRb_5nlDHO4q-R_0f33zHce"
+      async
+      defer
+    ></script>
+    <script src="./js/suncalc.js"></script>
+    <script src="./js/BmapQuery.js"></script>
+
+    <script>
+      let stations = [];
+      let map;
+      let cur_latlon;
+      let tmp_latlon;
+      function GetMap() {
+        //------------------------------------------------------------------------
+        //1. Instance
+        //------------------------------------------------------------------------
+        map = new Bmap("#myMap");
+
+        let latitude;
+        let longitude;
+
+        let map_type = "load";
+
+        try {
+          navigator.geolocation.getCurrentPosition(function (position) {
+            latitude = position.coords.latitude;
+            longitude = position.coords.longitude;
+            map_type = getMapType(latitude, longitude);
+            map.startMap(latitude, longitude, map_type, 17);
+            cur_latlon = [position.coords.latitude, position.coords.longitude];
+          });
+        } catch (error) {
+          latitude = 36;
+          longitude = 140;
+          map_type = getMapType(latitude, longitude);
+          map.startMap(latitude, longitude, map_type, 17);
+        }
+
+        //------------------------------------------------------------------------
+        //2. Display Map
+        //   startMap(lat, lon, "MapType", Zoom[1~20]);
+        //   MapType:[load, aerial,canvasDark,canvasLight,birdseye,grayscale,streetside]
+        //--------------------------------------------------
+        //
+        $("#recommend").on("click", function () {
+          const zoom_range = 13;
+          const mph = 4000;
+          let selected_hours = document.getElementById("hours");
+          let selected_num = selected_hours.selectedIndex;
+          let hours = Number(selected_hours.options[selected_num].value);
+          let meters = mph * hours;
+          map.map.setView({ zoom: zoom_range });
+          stations = [];
+          Microsoft.Maps.loadModule("Microsoft.Maps.SpatialMath", function () {
+            navigator.geolocation.getCurrentPosition(function (position) {
+              const loc = new Microsoft.Maps.Location(
+                position.coords.latitude,
+                position.coords.longitude
+              );
+              console.log("現在地");
+              console.log(loc);
+              let points = [];
+              const loops = [0, 1, 2, 3, 4, 5, 6, 7];
+              (async () => {
+                // const tmp_loc = await map.getCenter(loc);
+                console.log("clicked");
+                //Create a layer.
+                let layer = [];
+                for (let i = 0; i < 8; i++) {
+                  let tmp = new Microsoft.Maps.Layer();
+                  layer.push(tmp);
+                }
+                const options = [];
+                for await (i of loops) {
+                  let pos = Microsoft.Maps.SpatialMath.getDestination(
+                    loc,
+                    i * 45,
+                    meters,
+                    Microsoft.Maps.SpatialMath.Meters
+                  );
+                  station = await getNeaREST(pos.latitude, pos.longitude);
+                  stations.push(station);
+                  console.log("did it");
+
+                  // const loc_pin = new Microsoft.Maps.Location(
+                  //   station.data[0].location[1], // lat
+                  //   station.data[0].location[0] // lon
+                  // );
+                  let dis = distance(
+                    station.data[0].location[1],
+                    station.data[0].location[0],
+                    cur_latlon[0],
+                    cur_latlon[1]
+                  );
+                  console.log();
+
+                  options[i] = {
+                    lat: station.data[0].location[1], // lat
+                    lon: station.data[0].location[0], // lon
+                    title:
+                      station.data[0].station_name +
+                      "(" +
+                      dis.toFixed(2) +
+                      "km)",
+                    pinColor: "#ff0000",
+                    height: 120,
+                    width: 120,
+                    description:
+                      "<div><input type='button' class='destination' id='station" +
+                      i +
+                      "' value='ここに行く' onclick='getStation(this," +
+                      station.data[0].location[1] +
+                      "," +
+                      station.data[0].location[0] +
+                      ")'/></div>",
+                    show: false,
+                  };
+
+                  // layer[i].add(
+                  //   map.pin(
+                  //     station.data[0].location[1],
+                  //     station.data[0].location[0],
+                  //     "#ff0000"
+                  //   )
+                  // );
+
+                  //Infobox
+                  // let html = '<div style="background:red;">Hello,world</div>';
+                  // layer[i].add(
+                  //   map.infoboxHtml(
+                  //     station.data[0].location[1],
+                  //     station.data[0].location[0],
+                  //     html
+                  //   )
+                  //   // Microsoft.Maps.Infobox(loc_pin, {
+                  //   //   htmlContent: html,
+                  //   // })
+                  // );
+
+                  // map.map.layers.insert(layer[i]);
+
+                  // console.log("did it");
+                  // console.log("tmp_loc");
+                  // console.log(tmp_loc);
+                }
+
+                //----------------------------------------------------
+                //4. Switch infoboxs
+                //   infoboxLayers(options, true); //true=one, false=Multiple
+                //----------------------------------------------------
+                map.infoboxLayers(options, true);
+              })();
+            });
+          });
+
+          //tagetclassグループで指定
+          // const targets = document.getElementsByClassName("destination");
+          // console.log(targets);
+
+          // //for分で要素数分ループ処理
+          // for (let i = 0; i < targets.length; i++) {
+          //   //クリックイベントでアラートを表示する
+          //   targets[i].addEventListener(
+          //     "click",
+          //     () => {
+          //       console.log(i + "をクリックしました");
+          //     },
+          //     false
+          //   );
+          // }
+          // for (key in targets) {
+          //   console.log(key);
+          // }
+
+          // document
+          //   .getElementsByClassNameId("destination")
+          //   .addEventListener("click", function () {
+          //     console.log("id名「" + this.id + "」のボタンを押しました。");
+          //   });
+
+          // $("body").on("click", ".destination", function () {
+          //   console.log("this");
+          //   console.log("this");
+          //   console.log("this");
+          //   console.log("this");
+          //   console.log("this");
+          //   console.log("this");
+          //   console.log("this");
+          //   console.log("this");
+          //   let s_id = this.id;
+          //   getStation(stations, s_id);
+          //   console.log(s_id);
+          // });
+        });
+
+        //
+
+        // トラッキング
+        // //Start
+        document.getElementById("start_tracking").onclick = function () {
+          map.startTrackingDraw("#000000", 3, "", true);
+          // map.startTrackingDraw("#000000", 3, "#speed", true);
+        };
+        //Stop
+        document.getElementById("stop_tracking").onclick = function () {
+          map.stopTrackingDraw();
+          console.log("TrackData:", map.getTrackingData()); //option: Get tracking data[Array].
+          console.log("TrackSpeed:", map.getTrackingSpeed()); //option: Get tracking Speed data[Array].
+        };
+        //Clear Map.
+        document.getElementById("clear_map").onclick = function () {
+          map.clearMap(); //Clear Map.
+          map.clearTrackingData(); //Delete track&Speed data
+          // $("#speed").text("0");
+        };
+
+        document.getElementById("test_api").onclick = function () {
+          let api_url = "https://rahydyn.sakura.ne.jp/api/hello/";
+          api_url += "?lat=";
+          api_url += String(cur_latlon[0]);
+          api_url += "&lon=";
+          api_url += String(cur_latlon[1]);
+          tmp = fetch(api_url)
+            .then((response) => {
+              console.log(response);
+              return response.json();
+            })
+            .then((data) => {
+              console.log(data);
+              console.log(data.results.shop[0].access);
+              $("#test_field").html(data.results.shop[0].catch);
+              let pin = map.pinIcon(data.results.shop[0].lat, data.results.shop[0].lng, "./img/beer.png", 0.3, 0, 0);
+            });
+        };
+
+        // ルート検索
+        //------------------------------------------------------------------------
+        //3. Directions
+        // map.direction("#rootView", "from" , "to", waypoint[array]);
+        // !! 日本地図で表示してる場合のみルート検索可能（各国毎）以下パラメータ指定で制御も可能 !!
+        // +  [ English => https://www.bing.com/...&setLang=en&setMkt=en-US ]
+        // +  [ Japan   => https://www.bing.com/...&setLang=ja&setMkt=ja-JP ]
+        //------------------------------------------------------------------------
+        document.getElementById("search").onclick = function () {
+          //Get From,To
+          let from = document.getElementById("from").value; //StartPoint
+          let to = document.getElementById("to").value; //EndPoint
+          console.log("cur_latlon");
+          console.log(cur_latlon);
+          console.log("tmp_latlon");
+          console.log(tmp_latlon);
+
+          if (tmp_latlon != "undefined" || tmp_latlon != "") {
+            to = tmp_latlon;
+            tmp_latlon = [];
+          }
+
+          if (from == "現在地") {
+            from = cur_latlon;
+          } else if (to == "現在地") {
+            to = cur_latlon;
+          }
+          console.log(from, to);
+          const mode = document.getElementById("mode").value; //RouteMode[walking,driving]
+          //経由地あり
+          // const array = ["新宿", "恵比寿"]; //Waypoints...
+          // map.direction("#direction", mode, from, to, array); //Direction Methed
+          console.log(mode);
+          //経由地なし
+          map.direction("#direction", mode, from, to, []);
+          console.log(from, to);
+        };
+      }
+
+      function getStation(elem, lat, lon) {
+        const id = Number(elem.id.slice(-1));
+        console.log(stations[id].data[0].station_name);
+        $("#from").attr("value", "現在地");
+        $("#to").attr("value", stations[id].data[0].station_name);
+        tmp_latlon = [lat, lon];
+        console.log("did it!!!");
+      }
+
+      function getApi(lat, lon) {
+        let url = "https://rahydyn.sakura.ne.jp/api/hello";
+        url += "?lat=";
+        url += lat;
+        url += "&lon=";
+        url += lon;
+        return fetch(url).then((response) => {
+          console.log(response);
+          return response.json();
+        });
+      }
+
+      function distance(lat1, lon1, lat2, lon2) {
+        const R = Math.PI / 180;
+        lat1 *= R;
+        lon1 *= R;
+        lat2 *= R;
+        lon2 *= R;
+        return (
+          6371 *
+          Math.acos(
+            Math.cos(lat1) * Math.cos(lat2) * Math.cos(lon2 - lon1) +
+              Math.sin(lat1) * Math.sin(lat2)
+          )
+        );
+      }
+
+      function getNeaREST(lat, lon) {
+        // Using NeaREST API
+        // https://station.ic731.net/docs/near
+        let url = "https://station.ic731.net/api/nearest?";
+        url += "lat=" + lat;
+        url += "&lon=" + lon;
+        url += "&limit=1";
+        return fetch(url).then((response) => response.json());
+        // .then((data) => console.log(data));
+      }
+
+      async function getCurrentLatLon() {
+        return await navigator.geolocation.getCurrentPosition(
+          mapsInit,
+          mapsError
+        );
+        function mapsInit(position) {
+          const lat = position.coords.latitude;
+          const lon = position.coords.longitude;
+          console.log(lat, lon);
+          return [lat, lon];
+        }
+        function mapsError(error) {
+          alert("現在地を取得できませんでした");
+          console.log(error);
+        }
+      }
+
+      function getMapType(lat, lon) {
+        let times = SunCalc.getTimes(new Date(), lat, lon);
+        let sunriseStr =
+          times.sunrise.getHours() + ":" + times.sunrise.getMinutes();
+        let sunsetStr =
+          times.sunset.getHours() + ":" + times.sunrise.getMinutes();
+        // console.log("sunriseStr");
+        // console.log(sunriseStr);
+        // console.log("sunsetStr");
+        // console.log(sunsetStr);
+        let now = new Date();
+        // console.log(times.sunset);
+        // console.log(now);
+
+        if (now > times.sunrise && now < times.sunset) {
+          return "canvasLight";
+        } else if (now < times.sunrise || now > times.sunset) {
+          return "canvasDark";
+        }
+      }
+    </script>
+  </body>
+</html>
